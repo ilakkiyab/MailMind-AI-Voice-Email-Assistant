@@ -7,6 +7,14 @@ client_secret*.json
 credentials*.json
 token*.json
 .oauth-*.tmp
+*.pem
+*.key
+*.p12
+*.pfx
+service_account*.json
+service-account*.json
+oauth_token*.json
+oauth_credentials*.json
 
 # Python
 __pycache__/
@@ -24,12 +32,22 @@ env/
 .ruff_cache/
 .coverage
 htmlcov/
+.test-*/
+/data/pytest-*/
+/data/scheduling-test-run-*/
+/data/theme-tests-*/
 
 # Local application data
 data/*.db
 data/*.db-*
 data/*.sqlite
 data/*.sqlite3
+data/**/*.db
+data/**/*.db-*
+data/**/*.sqlite
+data/**/*.sqlite-*
+data/**/*.sqlite3
+data/**/*.sqlite3-*
 logs/
 
 # Streamlit local configuration and user secrets
