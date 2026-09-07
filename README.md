@@ -1,473 +1,247 @@
-# AI Voice-Powered Email Assistant
+# MailMind – AI Voice Email Assistant
 
-A modular final-year software engineering project for building a voice-driven,
-AI-assisted email and calendar workflow. Phase 4A adds Gmail inbox reading to
-the existing local transcription, NVIDIA NIM drafting and confirmed Gmail sending.
-Scheduled sending, inbox AI summaries and contextual replies are available.
-Smart reminders, voice email search, priority classification and action extraction
-are available, including reviewed Google Calendar event creation from extracted actions.
+MailMind is a local, single-user Streamlit application that combines voice input, AI writing assistance, Gmail, and Google Calendar in one email workspace. It turns spoken or typed instructions into editable drafts, helps users understand their inbox, and connects email actions to reminders and calendar events.
 
-## Scheduled Emails
+Speech recognition runs locally with Faster-Whisper. Text generation and email analysis use NVIDIA NIM through an OpenAI-compatible client. Users review messages and events before confirming external actions.
 
-Open **Scheduled Emails**, enter a valid recipient, nonempty subject and body,
-and a future date/time, then select **Schedule email** to authorize automatic
-delivery through the existing Gmail sender. Times use this computer's local
-timezone (including its rules for the selected date); storage uses UTC timestamps
-in `data/mailmind.db`. This is a local, single-user app using the connected Gmail
-account. Configure Gmail as described below before scheduling.
+## Problem statement
 
-A background worker starts with MailMind and checks every 15 seconds on every
-page, independently of browser interaction. Keep the app process running and the
-computer awake. Pending messages survive restarts; overdue messages are processed
-when the app starts again. The schedule list refreshes every 15 seconds while open.
-Cancel pending messages or delete Sent, Cancelled and Failed records on this page.
-Cancelling is unavailable once delivery has been claimed.
+Managing email involves more than reading and sending messages: users must write clear responses, identify urgent requests, track deadlines, and remember unanswered conversations. Switching between an inbox, notes, and a calendar makes these tasks easy to lose track of.
 
-SQLite atomically claims each due message before sending, preventing concurrent
-workers or reruns from sending it twice. Success becomes **Sent**. Failures become
-**Failed** without automatic retry. Interrupted **Sending** records become Failed
-after 15 minutes. A crash after Gmail accepts a message can leave delivery uncertain;
-check Gmail Sent before manually scheduling a replacement. This favors at-most-once
-attempts over automatic retries. Error records exclude raw provider exceptions.
+MailMind brings these workflows together with voice-assisted composition, on-demand email analysis, and reviewed next steps.
 
-Manual check: schedule a message to your own address a minute or two ahead, leave
-MailMind running, and verify Sent plus Gmail delivery. Create another message and
-cancel it before its due time, then delete its record. Restart the app before a
-pending message is due to verify persistence. Invalid addresses, empty fields and
-past times should show errors without creating records.
+## Key features
 
-Focused tests (mocked Gmail, temporary SQLite files):
-`python -m pytest tests/test_scheduling.py -q`. Full regression suite:
-`python -m pytest tests -q`.
+| Feature | Implemented behavior |
+| --- | --- |
+| Voice-based email interaction | Record instructions for composition or search, transcribe locally, and edit the text before using it. |
+| AI email drafting | Generate editable subjects and bodies with Professional, Friendly, Formal, or Concise tone. |
+| Gmail sending | Validate a single recipient and message fields, preview the exact message, and confirm delivery. |
+| Inbox access | Read the latest 10 inbox messages with sender, subject, received time, preview, and readable body. |
+| Email summarization | Request a concise summary of an individual email from the Inbox. |
+| Contextual replies | Generate, edit, regenerate, and explicitly confirm replies using the source email as context. |
+| Scheduled emails | Store future messages in SQLite, send through a background worker, and manage pending messages and delivery history. |
+| Smart reminders | Create persistent reminders, view upcoming/overdue/completed items, and receive dismissible Dashboard alerts. |
+| Voice email search | Search by typed or transcribed queries, including supported spoken patterns and Gmail search syntax; return up to 20 inbox matches. |
+| Priority classification | Classify individual messages as High, Medium, or Low priority with a short reason. |
+| Action and deadline extraction | Extract meetings, interviews, appointments, tasks, submissions, and deadlines with available dates, times, and source context. |
+| Action-to-reminder integration | Open an editable reminder from an extracted action and save it after confirmation. |
+| Google Calendar events | Review extracted actions, supply event start/end details, and confirm creation in the primary calendar. |
+| Follow-ups | Identify response-requesting sent conversations, show Waiting/Replied/Follow-up Needed status, and generate editable, confirmed follow-up messages. |
 
-## Planned capabilities
+## Tech stack
 
-- Voice-based email composition, inbox reading, and search
-- AI summarization, contextual replies, tone control, and priority classification
-- Scheduled sending, reminders, and unanswered-email follow-up detection
-- Meeting, deadline, and task extraction
-- Google Calendar event creation
-- Confirmation before sending, deleting, or scheduling
-- Future multilingual voice support
+| Layer | Technology and role |
+| --- | --- |
+| Language | Python |
+| Interface | Streamlit, custom CSS, session state, and timed fragments |
+| Speech recognition | Faster-Whisper, English `base.en`, CPU execution, `int8` computation |
+| AI | NVIDIA NIM via the OpenAI Python SDK |
+| Email | Gmail API, Python email/MIME utilities, `email-validator` |
+| Calendar | Google Calendar API |
+| Authentication | Google OAuth Desktop app flow and Google authentication libraries |
+| Persistence | SQLite through Python's `sqlite3` module |
+| Configuration | Environment variables and `python-dotenv` |
+| Testing | pytest, mocks, temporary SQLite databases, and Streamlit AppTest |
 
-## Technology stack
+## How the system works
 
-- Python
-- Streamlit
-- faster-whisper (local speech recognition)
-- Gmail API
-- Google Calendar API
-- SQLite
-
-## Project structure
+1. **Capture:** Type an instruction or record audio in Compose Email or Voice Email Search.
+2. **Transcribe:** Faster-Whisper converts recorded English speech into editable text locally.
+3. **Draft or retrieve:** Generate a draft through NVIDIA NIM, or retrieve messages through Gmail.
+4. **Understand:** Request summaries, contextual replies, priority labels, or action extraction for individual inbox messages.
+5. **Review:** Check generated content, recipients, extracted dates, and local-time interpretations.
+6. **Act:** Confirm an immediate send, authorize a scheduled message, save a reminder, or confirm a Calendar event.
+7. **Track:** Review scheduled delivery history, Dashboard reminder alerts, and sent-conversation follow-ups.
 
 ```text
-AI-voice-Email-Assistant/
-├── app.py                  # Streamlit entry point
-├── requirements.txt        # Python dependencies
-├── .env.example            # Safe configuration template
-├── .gitignore              # Excludes secrets, local data, and generated files
-├── README.md               # Project documentation
-├── src/
-│   └── email_assistant/
-│       ├── ai/             # NVIDIA NIM-backed language features
-│       ├── calendar/       # Google Calendar integration
-│       ├── core/           # Configuration and shared application concerns
-│       ├── email/          # Gmail operations and email workflows
-│       ├── models/         # Domain models and data-transfer objects
-│       ├── reminders/      # Reminder and follow-up logic
-│       ├── scheduling/     # Scheduled email workflows
-│       ├── storage/        # SQLite access and repositories
-│       ├── ui/             # Streamlit application, pages, and theme
-│       └── voice/          # Speech input and output services
-├── data/                   # Local runtime data (databases are ignored)
-├── tests/                  # Automated tests mirroring application modules
-└── docs/                   # Design, API, and project documentation
+Microphone / typed input
+          |
+          v
+Streamlit UI <---- Local Faster-Whisper transcription
+    |
+    +---- AI services -------------------- NVIDIA NIM
+    +---- Email services ---------------- Gmail API
+    +---- Reviewed extracted actions ----- Google Calendar API
+    +---- Scheduling / reminders --------- SQLite
+               |
+               +---- Background email delivery / Dashboard alerts
 ```
 
-Each application area is isolated behind its own package so it can be built and
-tested independently. External services belong in `email`, `calendar`, and `ai`;
-business workflows belong in `scheduling` and `reminders`; persistence stays in
-`storage`; and Streamlit-specific code stays in `ui`.
+## Project architecture
 
-## Local setup
+```text
+.
+├── app.py                         # Streamlit entry point
+├── requirements.txt               # Runtime dependencies
+├── requirements-dev.txt           # Runtime dependencies plus pytest
+├── pytest.ini                     # Test import-path configuration
+├── .env.example                   # Configuration template
+├── .streamlit/config.toml         # Streamlit configuration
+├── src/email_assistant/
+│   ├── ai/                        # Drafts, summaries, replies, priority, actions, follow-ups
+│   ├── calendar/                  # Event validation and confirmed creation
+│   ├── email/                     # Gmail OAuth, sending, inbox, search, follow-up detection
+│   ├── reminders/                 # Reminder validation and time handling
+│   ├── scheduling/                # Scheduled delivery service and background worker
+│   ├── storage/                   # SQLite repositories for messages and reminders
+│   ├── ui/                        # Pages, forms, confirmation flows, and styling
+│   ├── voice/                     # Local audio validation and transcription
+│   ├── core/                      # Package scaffold
+│   └── models/                    # Package scaffold
+├── tests/                         # Service and UI tests
+└── data/mailmind.db                # Created at runtime; ignored by Git
+```
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
+The UI coordinates review and confirmation, service modules handle provider calls and workflow rules, and storage modules manage persistence. Drafts and inbox analysis primarily use Streamlit session state; scheduled messages and reminders persist across restarts.
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Installation and setup
 
-3. Start the application:
+### Prerequisites
 
-   ```bash
-    streamlit run app.py
-    ```
+- Python 3.11 or newer is recommended; the test suite uses the standard-library `tomllib` module.
+- A local browser and microphone permission for recording.
+- Internet access for dependency installation, the first speech-model download, NVIDIA NIM, and Google APIs.
+- NVIDIA API access for AI features and a Google account with a configured Desktop OAuth client for Gmail/Calendar features.
 
-Copy `.env.example` to `.env`, set `NVIDIA_API_KEY` there (and optionally change
-`NVIDIA_MODEL`), then open the Compose Email page. Record an instruction, select
-**Transcribe audio**, review or edit the returned text, choose a tone, and select
-**Generate with AI**. The generated subject and body remain editable.
+Download or clone this repository, then open a terminal in its root directory.
 
-Speech-to-text runs locally on the CPU
-using the English `base.en` model with int8 computation. The model downloads
-automatically on first use and is reused for later transcriptions in the same
-app process. No speech-to-text API key is required. AI drafting uses NVIDIA's
-hosted OpenAI-compatible API at `https://integrate.api.nvidia.com/v1` and defaults
-to `nvidia/nemotron-3.5-lightning-30b-a3b`. Credentials are read only from environment
-configuration. Gmail sending is configured separately below.
+### Create a virtual environment
 
-## Phase 3: configure Gmail manually
+**Windows PowerShell:**
 
-1. In your Google Cloud project, enable the Gmail API.
-2. Configure the Google OAuth consent screen. For an external app in Testing,
-   add your Gmail account as a test user. Request only
-   `https://www.googleapis.com/auth/gmail.send`.
-3. Create an OAuth client with application type **Desktop app**, download its
-   JSON file, and save it as `credentials.json` beside `app.py`. Do not use a
-   service account or enter your Gmail password anywhere in this project.
-4. If the API and Desktop client are already configured and `credentials.json`
-   is in the project root, no additional credential configuration is needed.
-   Gmail always uses this root-level file and saves `token.json` beside it,
-   independently of the working directory. Both files are ignored by Git.
-   Old `GOOGLE_CLIENT_SECRETS_FILE` and `GOOGLE_TOKEN_FILE` settings are unused.
-5. Install the updated requirements and run Streamlit locally. In Compose Email,
-   enter one recipient address, a subject and a body. Select **Send Email**, review
-   the exact preview, then select **Confirm and send**. **Cancel send** discards
-   the pending confirmation. To edit a pending message, cancel first, edit, and
-   select Send Email again.
-6. On first confirmed send, Google sign-in opens in your local browser. Approve
-   within two minutes. The loopback callback uses a temporary localhost port.
-   After authorization, the confirmed message is sent and the UI displays
-   **Email sent successfully**.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
 
-This OAuth flow is for one user running Streamlit and the browser on the same
-computer, not a shared or remotely hosted deployment. The saved token represents
-the sending Gmail account and is reused/refreshed on later sends. Invalid or
-revoked refresh tokens trigger sign-in again. To switch accounts, stop the app,
-remove the project-root `token.json`, then authorize
-again. Protect local token files with your OS account permissions; they are not
-encrypted by the application. Testing-mode Google grants may expire and require
-fresh authorization.
-
-Missing credentials, rejected authorization, invalid addresses and API/network
-errors produce messages in the UI. Address validation checks syntax, not mailbox
-existence. Failed sends retain your draft but require a fresh confirmation.
-Delivery is never automatically retried: after an uncertain network/server result,
-check Gmail Sent before resending to avoid duplicates.
-
-Google documentation: [Python OAuth quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)
-and [sending messages](https://developers.google.com/workspace/gmail/api/guides/sending).
-
-## Phase 4A: read your Gmail inbox
-
-1. Keep the existing Desktop OAuth client and `credentials.json`. Add
-   `https://www.googleapis.com/auth/gmail.readonly` to your Google OAuth consent
-   configuration alongside the existing `gmail.send` permission.
-2. Run `streamlit run app.py` and select **Inbox**. The first visit with a
-   send-only token opens the existing Google sign-in flow to request both
-   permissions. Approve within two minutes. The same `token.json` is updated;
-   subsequent sending reuses it without losing sending permission.
-3. Check the latest ten inbox messages for sender, subject, received time
-   (in this computer's time zone), and preview. Expand **Read email** to see the
-   body. Plain text is preferred; HTML is converted to text without loading
-   remote images or running scripts. Attachments are not displayed.
-4. Select **Refresh Inbox** after receiving a new message. Messages are kept
-   only in the current Streamlit session, and reading does not mark them read.
-   Test with plain-text, HTML-only and multipart messages.
-5. An empty inbox displays a friendly notice. Network/API errors offer a retry;
-   expired tokens are refreshed through the existing authentication system,
-   and revoked refresh tokens trigger sign-in again. If Gmail rejects a cached
-   authorization, remove only local `token.json`, then refresh and authorize again.
-
-No additional dependencies are needed. Gmail API details:
-[listing messages](https://developers.google.com/workspace/gmail/api/guides/list-messages)
-and [message content](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages).
-
-## AI email summarization
-
-In **Inbox**, click **Summarize with AI** beneath any message to show a short
-summary in place, with 2–4 requested bullet points covering key facts and actions.
-This sends that email's readable body to the same NVIDIA provider used for drafting,
-using the existing `NVIDIA_API_KEY` and optional `NVIDIA_MODEL`; no new key is needed.
-Summaries remain in the current session until **Refresh Inbox**. HTML is converted
-to text; bodies longer than 16,000 characters use the first 16,000 with a visible
-notice. Read the full email for omitted details. Empty bodies and provider failures
-show safe messages; click again to retry. Attachments are not summarized.
-
-## AI Email Priority Classification
-
-In **Inbox**, click **Check Priority** under an email to display 🔴 High Priority,
-🟡 Medium Priority or 🟢 Low Priority and a short reason. Only clicks call the
-existing NVIDIA provider, using the same `NVIDIA_API_KEY` and `NVIDIA_MODEL`.
-Classification considers urgency, deadlines, interviews, jobs, meetings, exams,
-security warnings and requested actions versus ordinary updates and promotions.
-Results stay associated with each Gmail message throughout the Streamlit session,
-including refreshes. Click again to reassess; empty content and AI failures show
-friendly retry guidance. Long bodies use the first 16,000 readable characters with
-a visible notice; attachments are not analyzed.
-
-Focused tests: `python -m pytest tests/test_priority.py -q`.
-
-## AI Action & Deadline Extraction
-
-In **Inbox**, click **Extract Actions** beneath an email to display **Action &
-Deadline Analysis**. Each detected meeting, interview, appointment, task, document
-submission or deadline appears separately with action, type, date, time and
-description. Emails without actions show “No actions or deadlines detected in this
-email.” Missing dates/times show **Not specified**.
-
-Extraction uses the existing NVIDIA provider, `NVIDIA_API_KEY` and optional
-`NVIDIA_MODEL`, and runs only on a click. The email's subject and readable body
-are sent with its received timestamp in the computer's local timezone. Relative
-dates use that received date, never today's date. Tomorrow is the following day;
-next Monday is the next strictly future Monday; this Friday is Friday of the
-received date's Monday–Sunday week. Inferred dates (including resolved omitted
-years) are labeled separately from explicit full dates. Unclear dates remain
-unresolved. Original time wording preserves any stated timezone without assuming
-an event timezone. Source excerpts are displayed for review.
-
-Internally, validated JSON becomes immutable action records with nullable ISO
-date and 24-hour time, title, type, description, date provenance and source text.
-The analysis retains the source message ID and received timestamp. Each action's
-**Create Reminder** button opens an editable review form using the existing Smart
-Reminder service and storage. Review the title, description, date and time, then
-click **Confirm Reminder** to save. Nothing is saved by extraction or by opening
-the form. The description includes only the action description, email subject
-and sender, without copying the email body or source excerpt.
-
-Resolved dates and available times are pre-filled; missing or invalid values stay
-blank and must be selected. Dates/times must be in the future. Reminder times use
-the computer's local timezone: review the original time wording and adjust for
-any different timezone before confirming. AI interpretation still needs review
-against the source email before use.
-
-Draft edits and successful submission guards are isolated by email and action in
-the current Streamlit session, including when emails/actions reorder or their
-widgets are hidden. A successful submission shows **Reminder created successfully.**
-and **View Reminders** opens the existing Reminders page. Reruns cannot submit the
-same successful draft again; storage failures preserve edits for retry. This is
-a session guard, not cross-session action deduplication: after restarting the
-session, check existing Reminders before creating the same action again.
-Google Calendar is not integrated, and this flow does not change Gmail data.
-
-Focused integration tests: `python -m pytest tests/test_action_reminders.py tests/test_actions.py tests/test_reminders.py -q`.
-
-Results stay keyed by Gmail message ID in the current Streamlit session, including
-inbox refreshes and reordering. Click again to reanalyze; a failed retry retains
-the previous result. Empty content, missing configuration, authentication,
-quota/rate limits, network errors and malformed responses show friendly errors.
-Long messages use the first 16,000 readable body characters and 2,000 subject
-characters with a visible notice; attachments are not analyzed.
-
-Focused tests (mocked AI and inbox): `python -m pytest tests/test_actions.py -q`.
-Manual check: extract from a deadline email, a meeting with date/time, and an email
-with multiple actions; then try an informational email and a task without a date.
-Extract from two different messages, refresh the inbox, and verify each result
-remains below its source. Check a relative date against that email's received date.
-
-## Contextual AI replies
-
-In **Inbox**, choose Professional (default), Friendly, Formal, or Concise and
-click **Generate AI Reply** under an email. Its sender, subject and readable body
-are sent to the same NVIDIA client, `NVIDIA_API_KEY` and `NVIDIA_MODEL` used by
-drafting and summaries. Each message keeps its own editable reply in the current
-session, including across inbox refreshes. **Regenerate Reply** replaces that
-draft; **Clear Reply** removes it. Generation failures retain your previous edits.
-
-Review all facts before sending: AI is instructed to avoid invented facts and
-commitments, but output still needs human review. **Send Reply** displays the exact
-recipient, subject and edited body; **Confirm and send reply** performs delivery
-through the existing Gmail OAuth/sending service. Nothing sends automatically.
-Replies go to the original From address with a `Re:` subject (without duplicating
-an existing prefix). This uses ordinary sending, without Gmail `threadId`,
-`In-Reply-To` or `References`: original-thread placement is **not guaranteed**.
-
-Empty bodies show guidance without calling AI. HTML becomes readable text, and
-long bodies use the first 16,000 readable characters with a visible warning.
-Sender/subject context is bounded to 1,000/2,000 characters. Attachments are not
-included. Heuristic no-reply/newsletter warnings cannot identify every automated
-sender; verify the recipient. Configuration and network failures show safe retry
-guidance. After uncertain delivery, check Gmail Sent before trying again.
-
-## Smart Reminders
-
-Open **Reminders**, enter a title, optional description, date and time, then select
-**Create reminder**. Choose a future time in this computer's local timezone, as
-with Scheduled Emails. View **Upcoming**, **Past/Overdue**, and **Completed**
-sections; use **Mark as completed** or **Delete reminder** to manage records.
-
-Reminders persist in the separate `reminders` table in `data/mailmind.db`, with
-scheduled times stored as Unix timestamps and displayed in local time. While
-MailMind is open and the computer is awake, every page checks for due reminders
-every 15 seconds. Due notifications stay visible until dismissed, completed or
-deleted. Dismissal prevents repeat notifications in the same Streamlit session;
-a new session can notify again about still-pending overdue reminders, including
-ones missed while the app was closed. Reminders only show in-app notifications
-and never send email. No additional credentials or dependencies are needed.
-
-## Voice Email Search
-
-Open **Voice Email Search** from the sidebar or the dashboard's Voice Search card.
-Type a query, or record one and select **Transcribe search query**. Review/edit
-the text, then click **Search Emails**. Examples: “Find emails from Google”,
-“Find emails from Unstop”, “Show emails about placement”, “Show emails containing
-interview”, and “Find emails about assessment”. Explicit Gmail syntax also works.
-**Clear Search** clears the query, recording and results.
-
-Search reuses the existing local Faster-Whisper model and Gmail OAuth setup with
-the same inbox read-only permission. Up to 20 matching inbox messages appear with
-sender, subject, local received time, preview and expandable readable body.
-Searching does not mark messages read. Empty results and authentication/network
-errors show friendly guidance. Results stay in the current session; no new
-dependencies or credentials are needed.
-
-Focused tests: `python -m pytest tests/test_search.py -q` (mocked Gmail and voice).
-
-## Tests
+**macOS / Linux:**
 
 ```bash
-pip install -r requirements-dev.txt
-python -m pytest tests -q
-python -m compileall -q src app.py tests
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
 ```
 
-Gmail and Compose tests mock OAuth and delivery; they do not open authorization
-or send real email. A real end-to-end send requires your manual Google setup.
+Copy the template only when creating a new local configuration; retain an existing `.env` if already configured.
 
-## Security
+## Environment and configuration
 
-Do not commit API keys, OAuth client-secret files, access tokens, or local
-databases. The supplied `.gitignore` excludes these files, and `.env.example`
-contains names and safe placeholder paths only.
+Edit your local `.env` privately. Never paste real configuration values into documentation, issues, screenshots, or commits.
 
-## Google Calendar from extracted actions
+| Setting or file | Purpose |
+| --- | --- |
+| `NVIDIA_API_KEY` | Required for AI features; set your own value locally. |
+| `NVIDIA_MODEL` | Optional model override. The code defaults to `nvidia/nemotron-3.5-lightning-30b-a3b`. |
+| `credentials.json` | Downloaded Google Desktop OAuth client file, placed beside `app.py`. |
+| `token.json` | Created beside `app.py` by authorization and reused/refreshed by the application. |
+| `data/mailmind.db` | Automatically created SQLite database for scheduled messages and reminders. |
 
-**Where is Add to Calendar?** Click **Extract Actions** on an individual Inbox
-email, then look below each detected action, after **Create Reminder**. The button
-appears for every extracted Meeting, Interview, Appointment, Deadline, Task,
-Document Submission, Payment Deadline, or Application Deadline. Missing dates or
-times do not hide it; you enter those in the review. It does not appear when
-extraction returns no actions or fails. API enablement/OAuth is checked only when
-you confirm creation, not when displaying the button. A successfully added action
-shows its success message instead of another Add button.
+The AI client uses `https://integrate.api.nvidia.com/v1`. Existing process environment variables take precedence over `.env` values. The OpenAI SDK is used as the NVIDIA-compatible client; a separate OpenAI API key is not required.
 
-For a manual test, use a new email in the latest ten Inbox messages with subject
-`Project review meeting` and body `Please attend the project review meeting on
-15 October 2026 from 10:00 AM to 11:00 AM IST. We will review the project demo.`
-Use a future date if that date has passed. Expect a Meeting action and the button
-directly below it. Newsletters, completed security updates, and informational
-course announcements are not reliable tests because they may contain no action.
+`DATABASE_PATH` appears in the template but is not read by the current storage implementation: the application uses `data/mailmind.db`. Google credential/token paths are also fixed relative to the project root. No speech API key is required.
 
-1. In the **same Google Cloud project** as the existing `credentials.json`, open
-   **APIs & Services → Library → Google Calendar API → Enable**.
-2. Keep the existing Desktop OAuth client, `credentials.json`, and `token.json`.
-   In Google Auth Platform / OAuth consent configuration, add
-   `https://www.googleapis.com/auth/calendar.events.owned` to Data Access if needed.
-   Keep your Google account on the test-user list while the app is in testing.
-   This is the narrowest events scope supporting creation on your owned primary
-   calendar; Google does not offer a create-only primary-calendar scope.
-   See [Google's events.insert reference](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert).
-3. Start the existing app normally. Open **Inbox → Extract Actions → Add to Calendar**.
-   Review title, description, source subject/sender, date, start time, end date/time.
-   Missing dates/times remain blank. Explicit end times/durations are prefilled;
-   otherwise choose the end time yourself. All entered times use the computer's
-   local timezone: convert any different timezone stated in the email before confirming.
-4. Select **Confirm & Add to Calendar**. On first use, the existing OAuth flow
-   requests Calendar permission and preserves the Gmail scopes already in the token.
-   Choose the **same Google account as Gmail** and grant the requested permissions.
-   Cancelled or incomplete consent does not overwrite the existing token.
-   Valid tokens are reused and expired tokens use the existing refresh path.
-5. Look for **Event added to Google Calendar**, then use **Open event in Google Calendar**
-   and verify the event in that account's primary calendar. **Cancel** creates nothing.
+## Run the Streamlit application
 
-No guests are invited and no Gmail data is changed by Calendar creation. Each
-email/action has its own editable session draft. A stable Google event ID protects
-reruns, double clicks, and retries after a network timeout (including a new session
-with the same extracted action). Re-extraction that materially changes an action
-creates a new identity, so check Calendar before adding a changed extraction again.
-After an uncertain attempt, retry with the original submitted details; changing
-those details is blocked to avoid misreporting an existing event. Edit an already
-created event directly in Google Calendar. Draft edits live only in the current session.
+The application imports packages from `src`, so include that directory in `PYTHONPATH`. Run from the repository root with the virtual environment active.
 
-If the API is disabled, enable it in the credentials' project. If permission is
-missing, retry and grant Calendar access. For revoked/invalid tokens, retry OAuth;
-if a valid-looking token repeatedly gets a 401/403, stop the app, securely remove
-local `token.json`, restart and authorize Gmail and Calendar again (never remove
-`credentials.json`). This also requires Gmail re-consent. Keep all OAuth files private.
-Network failures preserve the draft; retrying the same action uses the same event ID.
+**Windows PowerShell:**
 
-Tests use synthetic emails, temporary OAuth files, and mocked Calendar services:
-`python -m pytest tests/test_calendar.py tests/test_actions.py tests/test_action_reminders.py tests/test_email.py -q`.
-No real Google Calendar event is created by these tests. Live integration is only
-verified after you manually see the event in your Google Calendar.
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
+python -m streamlit run app.py
+```
 
-## AI Follow-up Detection
+**macOS / Linux:**
 
-Open **Follow-ups** in the sidebar. MailMind reuses Gmail OAuth (send and read-only
-permissions, preserving existing Calendar permissions) to scan up to 50 recent
-Sent conversations from the last 90 days without marking mail read. Select
-**Refresh Follow-ups** for a new scan. The editable threshold defaults to **3 days**
-and is retained for the current session.
+```bash
+PYTHONPATH="$PWD/src" python -m streamlit run app.py
+```
 
-Each relevant thread has one entry showing recipient(s), subject, UTC sent date,
-whole days waiting, message/thread IDs, and **Follow-up Needed**, **Replied**, or
-**Waiting**. Waiting starts at the latest sent message; a later reply from any To
-recipient marks the thread Replied. Self-sent messages and sender aliases observed
-in Sent are not recipient replies. Automated/list headers, no-reply addresses,
-newsletters and obvious FYIs are excluded. Detection uses conservative English
-request/question rules (not an AI classification call); implicit requests and
-other languages may be missed. Replies in separate threads cannot be detected.
-CC-only replies are not counted. This is a bounded scan, not a complete mailbox audit.
+Open the local address printed by Streamlit. In **Compose Email**, record an instruction, select **Transcribe audio**, review the text, choose a tone, and select **Generate with AI**. Edit the resulting subject/body before selecting **Send Email** and **Confirm and send**.
 
-For a flagged email, **Generate Follow-up** uses the existing NVIDIA provider and
-model configuration to write a short professional draft. Only that email's context
-(up to 16,000 body characters) is sent to the AI provider. Drafts are editable and
-isolated by account, thread and source message in the current session.
-**Send Follow-up** shows the exact recipient, subject and body for review; only
-**Confirm and send follow-up** sends. **Cancel** sends nothing, and editing invalidates
-confirmation. Sending targets the first external To recipient and uses the original
-Gmail thread, In-Reply-To and References headers. Missing original message headers
-block delivery. Confirmation rechecks the conversation before sending; a reply or
-newer sent message blocks stale delivery. A reply arriving after that check is still
-possible. No background follow-up emails are sent. Successful sends are guarded
-against repeat clicks for the current source message. On uncertain delivery, check
-Gmail Sent before retrying; sending is never automatically retried.
+The **AI Assistant** page links to existing tools; it is not a standalone conversational assistant. **Settings** is currently a placeholder.
 
-Gmail lookup failures discard incomplete scans instead of guessing reply status.
-AI failures preserve existing edits. Drafts and preferences are session-only.
-The existing Faster-Whisper implementation is unchanged.
+## Gmail and Google Calendar integration
 
-### Manual testing
+### Configure Google access
 
-1. Start the app using your normal environment: `python -m streamlit run app.py`.
-2. Open **Follow-ups**, authorize the existing Gmail account if prompted, and
-   select **Refresh Follow-ups**. Verify the displayed IDs, recipients, subjects
-   and UTC dates against Gmail Sent.
-3. Locate an existing response-requesting sent email older than three days with
-   no reply. Verify **Follow-up Needed**. Increase the threshold above its days
-   waiting and verify **Waiting**; lower it back and verify it is flagged again.
-4. Check an existing thread with a later recipient reply: expect **Replied**.
-   Check a thread with only your own later sent messages: expect a waiting period
-   based on your latest sent message, not Replied. Verify multiple sent messages
-   produce only one entry. Check newsletters, no-reply mail and FYIs are excluded.
-5. Generate drafts for two flagged threads. Edit one, switch pages and return.
-   Verify each draft remains under its own email. Select **Send Follow-up** and
-   inspect the preview; verify nothing appears in Gmail Sent yet. Select **Cancel**.
-6. Select Send again, edit the draft and verify confirmation disappears. Select
-   Send again to review the edited text. To test actual delivery, use only a
-   recipient you control and explicitly select **Confirm and send follow-up**.
-   Verify exactly one sent message in the original Gmail thread, then refresh
-   Follow-ups and verify the waiting period resets. Skip confirmation to test
-   the entire draft workflow without sending any email.
-7. If the recipient replies after opening the preview, confirming should block
-   stale delivery and request a refresh. Try a disconnected network during refresh
-   or generation: expect an error message, not an app crash.
-8. Smoke-test Compose, Inbox, voice transcription, scheduling, reminders, priority,
-   action extraction and Calendar using your usual workflows. Avoid confirming any
-   real send or Calendar creation unless you intend that external action.
+1. In a Google Cloud project, enable the **Gmail API** and, for event creation, the **Google Calendar API**.
+2. Configure the OAuth consent screen. When using an external app in Testing, add the account you will authorize as a test user.
+3. Create an OAuth client with application type **Desktop app**. Download its JSON file and save it locally as `credentials.json` beside `app.py`.
+4. Configure the permissions used by the enabled workflows:
 
-Automated tests use synthetic mail and mocked Gmail/AI services; no real emails
-are sent. Focused: `python -m pytest tests/test_followups.py tests/test_email.py tests/test_replies.py -q`.
-Full regression: `python -m pytest tests -q`.
+| OAuth scope | Application use |
+| --- | --- |
+| `https://www.googleapis.com/auth/gmail.send` | Confirmed sends and authorized scheduled delivery |
+| `https://www.googleapis.com/auth/gmail.readonly` | Inbox reading, search, and sent-conversation inspection |
+| `https://www.googleapis.com/auth/calendar.events.owned` | Event creation in the user's primary calendar |
+
+5. Start MailMind and use the relevant feature. When authorization is needed, the app opens Google sign-in in a local browser and waits up to 120 seconds for a localhost callback. Adding a feature may request additional consent.
+
+Gmail and Calendar share the root-level OAuth files. The flow is designed for one user with the app and sign-in browser on the same computer. To switch accounts, stop the app, remove the local `token.json`, and authorize again. Never use a Gmail password or service-account file in place of the Desktop OAuth client.
+
+### Integration behavior
+
+- **Inbox and search:** Messages are read without marking them read. Plain text is preferred; HTML is converted into readable text. Attachments are not displayed or analyzed.
+- **Contextual replies:** Inbox replies use ordinary sending with a `Re:` subject; placement in the original Gmail thread is not guaranteed.
+- **Follow-ups:** The scan checks up to 50 sent conversations from the last 90 days. A configurable day threshold defaults to three. Detection uses conservative response-request rules and can miss implicit requests; a qualifying reply from any recipient marks the conversation Replied. Confirmed follow-ups recheck the conversation and use the original thread and message headers, sending to the first non-self To recipient.
+- **Calendar:** In Inbox, select **Extract Actions**, then **Add to Calendar** for an action. Review the title, description, start, and end before **Confirm & Add to Calendar**. Missing end times must be supplied. Events use the computer's local timezone and invite no guests. Stable event IDs help recover uncertain creation attempts without creating another event.
+
+## Local Faster-Whisper speech recognition
+
+The voice service loads the English `base.en` model on the CPU with `int8` computation, caches one model instance per process, and transcribes audio with English language selection and voice activity detection. The model downloads on first use and can then perform transcription locally using the cached model files.
+
+Recordings are processed from in-memory audio buffers; the voice service does not upload audio to a speech provider. Transcribed text is editable before use. If you request AI drafting, that text is sent to NVIDIA NIM. The current voice workflow covers composition and search; spoken inbox playback and multilingual transcription are not implemented.
+
+## Scheduling and reminder behavior
+
+- **Scheduled emails:** Selecting **Schedule email** authorizes future automatic delivery. A background worker checks every 15 seconds while the app process runs. Keep the computer awake and establish Gmail authorization before relying on scheduled delivery. Pending messages survive restarts; overdue messages are processed when the app resumes.
+- **Delivery safeguards:** SQLite atomically claims due messages before sending. Failed attempts are not automatically retried; interrupted Sending records become Failed after 15 minutes. Pending messages can be cancelled before they are claimed. Check Gmail Sent after uncertain delivery before creating a replacement.
+- **Reminders:** Records persist in SQLite and support completion and deletion. Dashboard alerts refresh every 15 seconds while that page is open. Dismissal is stored persistently without completing the reminder. Notifications are in-app only.
+- **Extracted actions:** Reminder creation opens a review form and saves only after confirmation. Missing dates/times require user input. Relative dates are interpreted against the source email's received date; review inferred dates and convert any stated timezone to the computer's local time. Reminder duplicate-submission guards are session-based, so check existing records after restarting.
+
+Schedule and reminder times are stored as Unix timestamps and displayed in local time. Follow-up timestamps are displayed in UTC.
+
+## Testing
+
+Install the development dependencies and run the existing suite:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
+
+`pytest.ini` adds `src` to the test import path. The suite includes tests for transcription validation/model configuration, AI response parsing, Gmail operations and OAuth, composition and replies, search, scheduling, reminders, priority classification, action extraction, action-to-reminder flows, Calendar creation, follow-ups, and UI/theme behavior.
+
+Provider-facing tests use mocks, storage tests use temporary databases, and UI tests use Streamlit AppTest. These checks do not establish live provider availability or real model accuracy. No test pass count or coverage percentage is claimed here.
+
+For a local smoke test, transcribe a short recording, review an AI draft, refresh Inbox, try search and analysis, and create a local reminder. Confirm a real email send, scheduled delivery, or Calendar event only when you intend that action. Verify the result in Gmail or Calendar as appropriate.
+
+## Security and privacy
+
+- `.gitignore` excludes local environment files, OAuth credentials/tokens, database files, and other secret-file patterns. Keep these files private; ignoring a file does not remove it from existing Git history.
+- OAuth tokens and the SQLite database are not encrypted by the application. Protect the project directory with operating-system permissions. Scheduled records contain message content, and reminder records may contain email-derived details.
+- Speech recognition is local, but AI features send the relevant instructions or email text/context to NVIDIA NIM. Gmail and Calendar operations communicate with Google. The application is not fully offline.
+- Email bodies and AI output are rendered as text in inbox workflows. HTML email is converted to text without loading remote images or executing scripts.
+- AI summaries, replies, classifications, and extracted dates require human review. Several analysis paths limit email bodies to the first 16,000 characters; attachments and omitted content may contain additional context.
+- Immediate emails, replies, follow-ups, and Calendar creation require confirmation. Scheduled delivery runs automatically after the user authorizes the schedule. Uncertain sends are not automatically replayed.
+- The current application targets local, single-user operation and does not provide a multi-user authentication or deployment model.
+
+## Future enhancements
+
+Potential extensions, not current features:
+
+- Multilingual transcription and spoken email playback.
+- A functional Settings page and standalone conversational assistant.
+- Thread-aware sending for contextual Inbox replies.
+- Broader, paginated follow-up scanning and improved implicit-request detection.
+- Cross-session deduplication when creating reminders from extracted actions.
+- A separately managed scheduler and notification channels that work when the Streamlit app is closed.
+
+## Author
+
+**ilakkiya391** — project author, as recorded in the repository's Git history.
