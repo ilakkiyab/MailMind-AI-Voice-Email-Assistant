@@ -1,0 +1,13 @@
+# Phase 1 user interface
+streamlit>=1.40,<2.0
+# Phase 2A speech-to-text
+faster-whisper>=1.2,<2.0
+# Phase 2B NVIDIA NIM (OpenAI-compatible API) email draft generation
+openai>=1.68,<3.0
+python-dotenv>=1.0,<2.0
+# Phase 3 Gmail sending and local OAuth
+google-api-python-client>=2.0,<3.0
+google-auth>=2.0,<3.0
+google-auth-oauthlib>=1.2,<2.0
+google-auth-httplib2>=0.2,<1.0
+email-validator>=2.0,<3.0

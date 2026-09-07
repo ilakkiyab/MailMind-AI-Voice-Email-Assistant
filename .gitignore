@@ -1,0 +1,44 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+credentials/
+client_secret*.json
+credentials*.json
+token*.json
+.oauth-*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+
+# Test, type-checker, and coverage output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local application data
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite3
+logs/
+
+# Streamlit local configuration and user secrets
+.streamlit/secrets.toml
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+credentials.json
+token.json
