@@ -28,9 +28,15 @@ def action_draft(email, item):
         clock = datetime.strptime(item.time, '%H:%M').time() if item.time else None
     except (TypeError, ValueError):
         clock = None
-    return dict(title=item.title, description=(
-        f'{item.description}\nEmail subject: {email.subject}\nSender: {email.sender}'
-    ), date=day, time=clock, open=False, reminder_id=None)
+    context = [item.description, f'Email subject: {email.subject}',
+               f'Sender: {email.sender}', f'Action type: {item.type}',
+               f'Source: {item.evidence}']
+    if item.date_text:
+        context.append(f'Date as written ({item.date_source}): {item.date_text}')
+    if item.time_text:
+        context.append(f'Time as written: {item.time_text}')
+    return dict(title=item.title, description='\n'.join(context),
+                date=day, time=clock, open=False, reminder_id=None)
 
 
 def confirm_action_reminder(store, draft):

@@ -1,7 +1,7 @@
 """Action reminder integration uses synthetic email and temporary local storage."""
 
 from dataclasses import replace
-from datetime import date, time
+from datetime import date, datetime, time
 import sqlite3
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -29,6 +29,7 @@ def store(tmp_path):
 @pytest.mark.parametrize('changes,day,clock', [
     ({}, date(2099, 9, 8), time(10, 30)),
     ({'time': None}, date(2099, 9, 8), None),
+    ({'date': None}, None, time(10, 30)),
     ({'date': None, 'time': None}, None, None),
     ({'date': 'bad', 'time': '25:80'}, None, None),
 ])
@@ -38,6 +39,10 @@ def test_prefill(changes, day, clock):
     assert draft['title'] == ACTION.title
     assert EMAIL.subject in draft['description'] and EMAIL.sender in draft['description']
     assert EMAIL.body not in draft['description']
+    assert ACTION.evidence in draft['description']
+    assert ACTION.type in draft['description']
+    assert ACTION.date_text in draft['description']
+    assert ACTION.time_text in draft['description']
 
 
 @pytest.mark.parametrize('changes,message', [
@@ -153,3 +158,69 @@ def test_multiple_actions_email_isolation_reorder_and_hidden_widgets(monkeypatch
     assert app.button(key=ui.action_key('email-2', ACTION) + '_open')
     assert app.button(key=ui.action_key(EMAIL.id, ACTION, 1) + '_open')
     assert not app.exception
+
+
+def test_extract_review_confirm_and_view_existing_reminders(monkeypatch, store):
+    from email_assistant.ui import actions, reminders
+
+    extract = MagicMock(return_value=ActionAnalysis((ACTION,), EMAIL.id))
+    monkeypatch.setattr(actions, 'extract_email_actions', extract)
+    monkeypatch.setattr(ui, 'reminder_store', lambda: store)
+    monkeypatch.setattr(reminders, 'reminder_store', lambda: store)
+    app = AppTest.from_string('''
+import streamlit as st
+from email_assistant.ui.actions import render_actions
+from email_assistant.ui.reminders import render_reminders
+if st.session_state.get('current_page') == 'Reminders':
+    render_reminders()
+else:
+    render_actions(st.session_state.test_email)
+''')
+    app.session_state.test_email = EMAIL
+    app.run()
+    assert not any(b.label == 'Create Reminder' for b in app.button)
+    extract.assert_not_called()
+    app.button(key='actions_' + EMAIL.id).click().run()
+    extract.assert_called_once_with(EMAIL.subject, EMAIL.body,
+                                    received_at=EMAIL.received_at, email_id=EMAIL.id)
+    assert not store.list_all()
+    key = ui.action_key(EMAIL.id, ACTION)
+    app.button(key=key + '_open').click().run()
+    app.text_input(key=key + '_title').set_value('Reviewed reminder')
+    app.text_area(key=key + '_description').set_value('Reviewed context')
+    app.date_input(key=key + '_date').set_value(date(2099, 10, 1))
+    app.time_input(key=key + '_time').set_value(time(14, 45))
+    app.run()
+    assert not store.list_all()
+    app.button(key=key + '_confirm').click().run()
+    row, = ReminderStore(store.path).list_all()
+    assert (row['title'], row['description']) == ('Reviewed reminder', 'Reviewed context')
+    assert datetime.fromtimestamp(row['scheduled_at']) == datetime(2099, 10, 1, 14, 45)
+    # Re-extraction and normal reruns retain the successful submission guard.
+    app.button(key='actions_' + EMAIL.id).click().run()
+    assert not any(b.label == 'Confirm Reminder' for b in app.button)
+    assert not any(b.label == 'Create Reminder' for b in app.button)
+    app.button(key=key + '_view').click().run()
+    assert app.session_state.current_page == 'Reminders'
+    assert any(t.value == 'Reviewed reminder' for t in app.text)
+    assert len(store.list_all()) == 1 and not app.exception
+
+
+def test_cancel_reopen_and_past_time_rejection(monkeypatch, store):
+    app = make_app(monkeypatch, store)
+    key = ui.action_key(EMAIL.id, ACTION)
+    app.button(key=key + '_open').click().run()
+    app.text_input(key=key + '_title').set_value('Keep my edits').run()
+    app.button(key=key + '_cancel').click().run()
+    assert not store.list_all()
+    assert not any(b.label == 'Confirm Reminder' for b in app.button)
+    app.button(key=key + '_open').click().run()
+    assert app.text_input(key=key + '_title').value == 'Keep my edits'
+    app.date_input(key=key + '_date').set_value(date(2000, 1, 1)).run()
+    app.button(key=key + '_confirm').click().run()
+    assert 'future' in app.error[0].value
+    assert not store.list_all()
+    assert app.text_input(key=key + '_title').value == 'Keep my edits'
+    app.date_input(key=key + '_date').set_value(date(2099, 9, 8)).run()
+    app.button(key=key + '_confirm').click().run()
+    assert len(store.list_all()) == 1 and not app.exception
