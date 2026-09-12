@@ -414,6 +414,8 @@ def fetch_inbox() -> list[InboxEmail]:
     except EmailDeliveryError as exc:
         raise InboxError(str(exc)) from None
     except HttpError as exc:
+        print("GMAIL DEBUG STATUS:", exc.resp.status)
+        print("GMAIL DEBUG ERROR:", str(exc))
         if exc.resp.status == 401:
             detail = "Gmail authorization expired or was revoked. Remove the local token.json file and select Refresh Inbox to authorize again."
         elif exc.resp.status == 403:
