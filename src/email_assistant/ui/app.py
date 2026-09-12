@@ -57,20 +57,48 @@ def _render_sidebar() -> None:
         )
 
 
-def run_app() -> None:
-    """Configure and render the complete application."""
+def run_app():
+    """Render the complete application."""
+
     st.set_page_config(
-        page_title="MailMind · AI Voice Email Assistant", page_icon="✉️",
-        layout="wide", initial_sidebar_state="expanded",
+        page_title="MailMind | AI Voice Email Assistant",
+        page_icon="📧",
+        layout="wide",
+        initial_sidebar_state="expanded",
     )
+
+    # Google account connection
+    if st.user.is_logged_in:
+        with st.sidebar:
+            st.success(f"Connected: {st.user.email}")
+
+            if st.button("Logout from Google"):
+                st.logout()
+
+    else:
+        with st.sidebar:
+            st.info("Connect Google to use Gmail and Calendar.")
+
+            if st.button("Connect Google"):
+                st.login()
+
     apply_theme()
+
+    start_scheduler()
+
     try:
-        start_scheduler()
-    except (OSError, sqlite3.Error):
-        st.error("Scheduled email worker could not start. Check local data folder permissions and restart MailMind.")
+        initialize_database()
+    except sqlite3.Error:
+        st.warning(
+            "Local database could not start. "
+            "Check local data folder permissions and restart MailMind."
+        )
+
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Dashboard"
+
     _render_sidebar()
-    if st.session_state.current_page == "Dashboard":
-        render_reminder_notifications()
-    PAGE_RENDERERS[st.session_state.current_page]()
+
+    current_page = st.session_state.current_page
+    page_renderer = PAGE_RENDERERS[current_page]
+    page_renderer()

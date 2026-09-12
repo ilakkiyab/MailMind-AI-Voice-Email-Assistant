@@ -14,6 +14,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 import tempfile
 import webbrowser
+import streamlit as st
 
 from email_validator import EmailNotValidError, validate_email
 from google.auth.exceptions import GoogleAuthError, RefreshError
@@ -71,55 +72,130 @@ def _save_token(path: Path, credentials: Credentials) -> None:
 
 def get_credentials(required_scopes=None, *, preserve_existing_scopes=False) -> Credentials:
     required_scopes = required_scopes or SCOPES
+
+    # Streamlit Cloud: use the Google access token from the logged-in user.
+    try:
+        if st.user.is_logged_in:
+            try:
+                access_token = st.user.tokens["access"]
+            except (KeyError, TypeError, AttributeError):
+                raise EmailDeliveryError(
+                    "Google access token is unavailable. Please log out and connect Google again."
+                )
+
+            if not access_token:
+                raise EmailDeliveryError(
+                    "Google access token is unavailable. Please log out and connect Google again."
+                )
+
+            return Credentials(
+                token=access_token,
+                scopes=required_scopes,
+            )
+
+    except EmailDeliveryError:
+        raise
+    except (AttributeError, RuntimeError):
+        # Local development without Streamlit authentication:
+        # continue with the existing credentials.json/token.json flow.
+        pass
+
+    # Local development fallback.
     client_path = PROJECT_ROOT / "credentials.json"
     token_path = PROJECT_ROOT / "token.json"
+
     if client_path.resolve() == token_path.resolve():
-        raise EmailDeliveryError("Google client credentials and token must use different file paths.")
+        raise EmailDeliveryError(
+            "Google client credentials and token must use different file paths."
+        )
+
     try:
         credentials = None
+
         if token_path.exists():
             try:
                 credentials = Credentials.from_authorized_user_file(str(token_path))
+
                 if preserve_existing_scopes:
-                    required_scopes = sorted(set(required_scopes) | set(credentials.scopes or []))
+                    required_scopes = sorted(
+                        set(required_scopes) | set(credentials.scopes or [])
+                    )
+
                 if not set(required_scopes).issubset(set(credentials.scopes or [])):
                     credentials = None
+
             except (ValueError, KeyError, TypeError):
                 credentials = None
+
         if credentials and credentials.valid:
             return credentials
+
         if credentials and credentials.expired and credentials.refresh_token:
             try:
                 credentials.refresh(Request())
             except RefreshError:
                 credentials = None
+
         if not credentials or not credentials.valid:
             if not client_path.is_file():
                 raise EmailDeliveryError(
-                    "Google OAuth credentials are missing. Place your downloaded Desktop app "
-                    "OAuth file at credentials.json beside app.py; see README."
+                    "Google account is not connected. Please connect Google to use Gmail and Calendar."
                 )
-            flow = InstalledAppFlow.from_client_secrets_file(str(client_path), required_scopes)
+
+            flow = InstalledAppFlow.from_client_secrets_file(
+                str(client_path),
+                required_scopes,
+            )
+
             credentials = flow.run_local_server(
-                host="localhost", port=0, open_browser=True, timeout_seconds=120,
-                access_type="offline", prompt="consent", authorization_prompt_message="",
+                host="localhost",
+                port=0,
+                open_browser=True,
+                timeout_seconds=120,
+                access_type="offline",
+                prompt="consent",
+                authorization_prompt_message="",
                 success_message="Gmail authorization complete. You may close this tab.",
             )
+
         if not credentials or not credentials.valid:
-            raise EmailDeliveryError("Gmail authorization was not completed. Please try again.")
+            raise EmailDeliveryError(
+                "Google authorization was not completed. Please try again."
+            )
+
         if preserve_existing_scopes:
             granted = credentials.granted_scopes
-            if not set(required_scopes).issubset(set(granted if granted is not None else credentials.scopes or [])):
-                raise EmailDeliveryError("Google OAuth permission missing. Grant the requested permissions and try again; your existing token is unchanged.")
+            available_scopes = (
+                granted if granted is not None else credentials.scopes or []
+            )
+
+            if not set(required_scopes).issubset(set(available_scopes)):
+                raise EmailDeliveryError(
+                    "Google OAuth permission is missing. Grant the requested permissions and try again."
+                )
+
         _save_token(token_path, credentials)
         return credentials
+
     except EmailDeliveryError:
         raise
-    except (GoogleAuthError, OAuth2Error, ValueError, KeyError, TypeError, AttributeError, Warning, webbrowser.Error):
-        raise EmailDeliveryError("Gmail authentication failed or timed out. Check your OAuth configuration and try again.") from None
+    except (
+        GoogleAuthError,
+        OAuth2Error,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        Warning,
+        webbrowser.Error,
+    ):
+        raise EmailDeliveryError(
+            "Gmail authentication failed or timed out. Check your OAuth configuration and try again."
+        ) from None
     except (OSError, RequestException, httplib2.HttpLib2Error):
-        raise EmailDeliveryError("Could not connect to Google or read/write OAuth files. Check your network and file permissions.") from None
-
+        raise EmailDeliveryError(
+            "Could not connect to Google. Check your network and try again."
+        ) from None
 
 def send_email(recipient: str, subject: str, body: str, *, thread_id: str | None = None,
                in_reply_to: str | None = None) -> str:
