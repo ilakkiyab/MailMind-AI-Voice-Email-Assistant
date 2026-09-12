@@ -86,14 +86,6 @@ def run_app():
 
     start_scheduler()
 
-    try:
-        initialize_database()
-    except sqlite3.Error:
-        st.warning(
-            "Local database could not start. "
-            "Check local data folder permissions and restart MailMind."
-        )
-
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Dashboard"
 
